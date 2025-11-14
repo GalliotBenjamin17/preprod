@@ -1,0 +1,35 @@
+{
+    "private": true,
+    "scripts": {
+        "dev": "vite",
+        "build": "vite build"
+    },
+    "devDependencies": {
+        "@alpinejs/focus": "^3.10.3",
+        "@tailwindcss/aspect-ratio": "^0.4.2",
+        "@tailwindcss/forms": "^0.5.7",
+        "@tailwindcss/typography": "^0.5.10",
+        "alpinejs": "^3.10.3",
+        "autoprefixer": "^10.4.19",
+        "bootstrap": "^5.1.3",
+        "laravel-vite-plugin": "^0.6.0",
+        "postcss": "^8.4.38",
+        "postcss-nesting": "^12.1.0",
+        "prettier": "^2.8.8",
+        "prettier-plugin-tailwindcss": "^0.2.8",
+        "sass": "^1.52.3",
+        "sass-loader": "^11.0.1",
+        "tailwind-scrollbar": "^2.0.1",
+        "tailwindcss": "^3.4.1",
+        "vite": "^3.0.0"
+    },
+    "dependencies": {
+        "@alpinejs/mask": "^3.10.2",
+        "@awcodes/alpine-floating-ui": "^3.5.0",
+        "@ryangjchandler/alpine-tooltip": "^1.2.0",
+        "chart.js": "^3.9.1",
+        "puppeteer": "^22.6.3",
+        "slim-select": "^1.27.1",
+        "tippy.js": "^6.3.7"
+    }
+}
