@@ -64,6 +64,8 @@ class Project extends Model
         'is_synchronized_with_parent' => 'boolean'
     ];
 
+    protected ?array $descendantAndSelfIdsCache = null;
+
     public static function boot()
     {
         parent::boot();
@@ -111,6 +113,30 @@ class Project extends Model
     public function childrenProjects(): HasMany
     {
         return $this->hasMany(Project::class, 'parent_project_id', 'id');
+    }
+
+    /**
+     * Returns the IDs of the project and all its descendants.
+     */
+    public function descendantAndSelfIds(): array
+    {
+        if ($this->descendantAndSelfIdsCache !== null) {
+            return $this->descendantAndSelfIdsCache;
+        }
+
+        $ids = [$this->id];
+        $currentLevelIds = $this->childrenProjects()->pluck('id')->toArray();
+
+        while (! empty($currentLevelIds)) {
+            $ids = array_merge($ids, $currentLevelIds);
+
+            $currentLevelIds = self::query()
+                ->whereIn('parent_project_id', $currentLevelIds)
+                ->pluck('id')
+                ->toArray();
+        }
+
+        return $this->descendantAndSelfIdsCache = array_values(array_unique($ids));
     }
 
     public function referent(): BelongsTo

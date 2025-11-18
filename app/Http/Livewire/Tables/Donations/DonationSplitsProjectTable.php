@@ -37,7 +37,8 @@ class DonationSplitsProjectTable extends Component implements HasForms, HasTable
             'childrenSplits',
         ])->withCount([
             'childrenSplits',
-        ])->where('project_id', $this->project->id)
+        ])->whereIn('project_id', $this->project->descendantAndSelfIds())
+            ->whereDoesntHave('childrenSplits')
             ->orderBy('project_id');
     }
 
@@ -57,7 +58,9 @@ class DonationSplitsProjectTable extends Component implements HasForms, HasTable
         return [
             Action::make('Flécher')
                 ->visible(function (DonationSplit $record) {
-                    return $this->project->hasChildrenProjects() and $record->childrenSplits->sum('amount') < $record->amount;
+                    return $record->project_id === $this->project->id
+                        && $this->project->hasChildrenProjects()
+                        && $record->childrenSplits->sum('amount') < $record->amount;
                 })
                 ->action(function (DonationSplit $record, array $data): void {
                     try {
