@@ -9,10 +9,12 @@ use App\Models\DonationSplit;
 use App\Models\Project;
 use Closure;
 use Filament\Forms\ComponentContainer;
+use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
+use Filament\Forms\Get;
 use Filament\Notifications\Notification;
 use Filament\Tables\Actions\Action;
 use Filament\Tables\Columns\TextColumn;
@@ -91,8 +93,10 @@ class DonationSplitsProjectTable extends Component implements HasForms, HasTable
                         ->label('Sous-projet')
                         ->required()
                         ->searchable()
+                        ->reactive()
                         ->options(function () {
                             return $this->project->childrenProjects()
+                                ->withSum('donationSplits', 'amount')
                                 ->get()
                                 ->filter(function ($item) {
 
@@ -102,8 +106,43 @@ class DonationSplitsProjectTable extends Component implements HasForms, HasTable
 
                                     return $item->donation_splits_sum_amount < $item->amount_wanted_ttc;
                                 })
-                                ->pluck('name', 'id')
+                                ->mapWithKeys(function ($item) {
+                                    $remaining = max(0, ($item->amount_wanted_ttc ?? 0) - ($item->donation_splits_sum_amount ?? 0));
+
+                                    return [
+                                        $item->id => sprintf(
+                                            '%s (%s € TTC restants)',
+                                            $item->name,
+                                            format($remaining)
+                                        ),
+                                    ];
+                                })
                                 ->toArray();
+                        }),
+                    Placeholder::make('sub_project_remaining')
+                        ->label('Reste à financer')
+                        ->columnSpanFull()
+                        ->reactive()
+                        ->visible(fn (Get $get) => filled($get('project_id')))
+                        ->content(function (Get $get) {
+                            $projectId = $get('project_id');
+
+                            if (! $projectId) {
+                                return null;
+                            }
+
+                            $subProject = $this->project->childrenProjects()
+                                ->withSum('donationSplits', 'amount')
+                                ->firstWhere('id', $projectId);
+
+                            if (! $subProject) {
+                                return null;
+                            }
+
+                            $alreadyFunded = $subProject->donation_splits_sum_amount ?? 0;
+                            $remaining = max(0, ($subProject->amount_wanted_ttc ?? 0) - $alreadyFunded);
+
+                            return format($remaining).' € TTC disponibles sur ce sous-projet.';
                         }),
                     TextInput::make('amount')
                         ->label('Montant TTC')
