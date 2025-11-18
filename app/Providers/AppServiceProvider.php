@@ -37,11 +37,11 @@ class AppServiceProvider extends ServiceProvider
         });
 
         Request::macro('subdomain', function () {
-            if ($this->getHttpHost() == config('app.displayed_url')) {
+            if ($this->getHost() == config('app.displayed_url')) {
                 return null;
             }
 
-            return current(explode('.', $this->getHttpHost()));
+            return current(explode('.', $this->getHost()));
         });
 
         FileUpload::macro('genericUpload', function (string $path) {
