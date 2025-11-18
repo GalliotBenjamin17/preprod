@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Projects\Details;
 
 use App\Http\Controllers\Controller;
-use App\Models\DonationSplit;
 use App\Models\Project;
 use Illuminate\Http\Request;
 
@@ -11,9 +10,7 @@ class ShowProjectDonationsController extends Controller
 {
     public function __invoke(Request $request, Project $project)
     {
-        $leafSplitsQuery = DonationSplit::query()
-            ->whereIn('project_id', $project->descendantAndSelfIds())
-            ->whereDoesntHave('childrenSplits');
+        $leafSplitsQuery = $project->leafDonationSplitsQuery();
 
         $donationsAffiliated = (clone $leafSplitsQuery)->sum('amount');
         $tonnesAffiliated = (clone $leafSplitsQuery)->sum('tonne_co2');

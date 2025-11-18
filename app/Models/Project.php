@@ -19,6 +19,7 @@ use App\Traits\HasFiles;
 use App\Traits\HasRedirection;
 use App\Traits\HasSlug;
 use App\Traits\HasTenant;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -162,6 +163,13 @@ class Project extends Model
     public function donationSplits(): HasMany
     {
         return $this->hasMany(DonationSplit::class, 'project_id', 'id');
+    }
+
+    public function leafDonationSplitsQuery(): Builder
+    {
+        return DonationSplit::query()
+            ->whereIn('project_id', $this->descendantAndSelfIds())
+            ->whereDoesntHave('childrenSplits');
     }
 
     public function news(): HasMany

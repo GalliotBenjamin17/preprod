@@ -46,10 +46,12 @@ class ProjectsExport implements FromCollection, ShouldAutoSize, WithColumnFormat
      */
     public function map($row): array
     {
-        $contribTtc     = (float) $row->donationSplits->sum('amount');
+        $leafSplitsQuery = $row->leafDonationSplitsQuery();
+        $contribTtc     = (float) (clone $leafSplitsQuery)->sum('amount');
         $contribHt      = TVAHelper::getHT($contribTtc);
         $costHt         = TVAHelper::getHT((float) $row->cost_global_ttc);
         $financingRatio = ((float) $row->cost_global_ttc > 0) ? ($contribTtc / (float) $row->cost_global_ttc) : 0.0;
+        $contribTonne   = (float) (clone $leafSplitsQuery)->sum('tonne_co2');
 
         $objectiveTco2 = $row->hasChildrenProjects()
         ? ((bool) $row->is_goal_tco2_edited_manually ? $row->tco2 : $row->childrenProjects()->sum('tco2'))
@@ -79,7 +81,7 @@ class ProjectsExport implements FromCollection, ShouldAutoSize, WithColumnFormat
             $row->certification?->name ?? '',
             $row->segmentation?->name ?? '',
             $objectiveTco2,
-            $row->donationSplits->sum('tonne_co2'),
+            $contribTonne,
             $financingRatio,
             $contribTtc,
             $contribHt,
@@ -186,10 +188,12 @@ class ProjectsExport implements FromCollection, ShouldAutoSize, WithColumnFormat
             }
             public function map($row): array
             {
-                $contribTtc     = (float) $row->donationSplits->sum('amount');
+                $leafSplitsQuery = $row->leafDonationSplitsQuery();
+                $contribTtc     = (float) (clone $leafSplitsQuery)->sum('amount');
                 $contribHt      = TVAHelper::getHT($contribTtc);
                 $costHt         = TVAHelper::getHT((float) $row->cost_global_ttc);
                 $financingRatio = ((float) $row->cost_global_ttc > 0) ? ($contribTtc / (float) $row->cost_global_ttc) : 0.0;
+                $contribTonne   = (float) (clone $leafSplitsQuery)->sum('tonne_co2');
                 $sponsorType    = match ($row->sponsor ? get_class($row->sponsor) : null) {
                     Organization::class => 'Organisation',
                     User::class         => 'Particulier',
@@ -215,7 +219,7 @@ class ProjectsExport implements FromCollection, ShouldAutoSize, WithColumnFormat
                     $row->certification?->name ?? '',
                     $row->segmentation?->name ?? '',
                     $row->tco2,
-                    $row->donationSplits->sum('tonne_co2'),
+                      $contribTonne,
                     $financingRatio,
                     $contribTtc,
                     $contribHt,
