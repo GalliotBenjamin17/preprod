@@ -61,6 +61,78 @@
             </div>
         @endif
 
+        @if ($parentSplitsWithRemaining->isNotEmpty())
+            <div class="mt-6">
+                <div class="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-5 shadow-sm">
+                    <div class="flex flex-col gap-y-1 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <p class="text-sm font-semibold text-amber-900">Contributions partiellement fléchées</p>
+                            <p class="text-xs text-amber-800">
+                                Ces contributions possèdent encore un montant à répartir vers un sous-projet.
+                            </p>
+                        </div>
+                        <div class="text-xs font-medium text-amber-800">
+                            {{ $parentSplitsWithRemaining->count() }} contribution(s)
+                        </div>
+                    </div>
+
+                    <div class="mt-4 space-y-3">
+                        @foreach ($parentSplitsWithRemaining as $split)
+                            @php
+                                $remainingAmount = max($split->amount - $split->childrenSplits->sum('amount'), 0);
+                                $donorName = $split->donation?->related?->name ?? $split->donation?->related?->full_name ?? 'Donateur inconnu';
+                            @endphp
+
+                            <div
+                                class="flex flex-col gap-y-2 rounded-lg border border-amber-100 bg-white/70 px-3 py-2 text-sm shadow-sm sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                    <p class="font-semibold text-gray-900">
+                                        {{ $donorName }}
+                                    </p>
+                                    <div class="text-xs text-gray-600 space-y-0.5">
+                                        <p>
+                                            Montant déjà fléché sur ce projet parent :
+                                            <span class="font-semibold text-gray-800">
+                                                {{ format($split->amount - $remainingAmount) }} € TTC
+                                            </span>
+                                        </p>
+                                        <p>
+                                            Reste à flécher {{ format($remainingAmount) }} € TTC —
+                                            Contribution {{ \Illuminate\Support\Str::limit($split->donation_id, 8, '...') }}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div class="flex flex-wrap items-center justify-end gap-3">
+                                    @php
+                                        $openSplitUrl = str_replace("'", "\\'", request()->fullUrlWithQuery(['open_split' => $split->getKey()]));
+                                    @endphp
+                                    <button type="button"
+                                        class="text-xs font-semibold text-primary-700 hover:text-primary-600 underline"
+                                        onclick="
+                                            const actionBtn = document.querySelector(`[data-split-action='{{ $split->getKey() }}']`);
+                                            if (actionBtn) {
+                                                actionBtn.click();
+                                                actionBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                            } else {
+                                                window.location = '{{ $openSplitUrl }}';
+                                            }
+                                        ">
+                                        Flécher
+                                    </button>
+
+                                    <a href="{{ route('donations.show.split', ['donation' => $split->donation_id]) }}"
+                                        class="text-xs font-semibold text-amber-800 underline hover:text-amber-900">
+                                        Lien vers la contribution
+                                    </a>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            </div>
+        @endif
+
         <x-layouts.card name="Contributions" :thin-padding="true">
             <x-slot:icon>
                 {!! \App\Helpers\IconHelper::donationsIcon(size: 'sm') !!}

@@ -40,8 +40,8 @@ class DonationSplitsProjectTable extends Component implements HasForms, HasTable
         ])->withCount([
             'childrenSplits',
         ])->whereIn('project_id', $this->project->descendantAndSelfIds())
-            ->whereDoesntHave('childrenSplits')
-            ->orderBy('project_id');
+            ->orderByRaw('CASE WHEN project_id = ? THEN 0 ELSE 1 END', [$this->project->id])
+            ->orderByDesc('created_at');
     }
 
     protected function getTableRecordUrlUsing(): Closure
@@ -63,6 +63,11 @@ class DonationSplitsProjectTable extends Component implements HasForms, HasTable
                     return $record->project_id === $this->project->id
                         && $this->project->hasChildrenProjects()
                         && $record->childrenSplits->sum('amount') < $record->amount;
+                })
+                ->extraAttributes(function (DonationSplit $record) {
+                    return [
+                        'data-split-action' => $record->getKey(),
+                    ];
                 })
                 ->action(function (DonationSplit $record, array $data): void {
                     try {
