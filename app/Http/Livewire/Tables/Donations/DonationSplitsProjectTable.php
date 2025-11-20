@@ -34,13 +34,19 @@ class DonationSplitsProjectTable extends Component implements HasForms, HasTable
 
     protected function getTableQuery(): Builder
     {
-        return DonationSplit::with([
+        return DonationSplit::query()
+            ->select('donation_splits.*')
+            ->selectRaw(
+                'CASE WHEN project_id = ? THEN 1 ELSE 0 END as is_direct_project',
+                [$this->project->getKey()],
+            )
+            ->with([
             'donation.related',
             'childrenSplits',
         ])->withCount([
             'childrenSplits',
         ])->whereIn('project_id', $this->project->descendantAndSelfIds())
-            ->orderByRaw('CASE WHEN project_id = ? THEN 0 ELSE 1 END', [$this->project->id])
+            ->orderByDesc('is_direct_project')
             ->orderByDesc('created_at');
     }
 
