@@ -94,8 +94,9 @@ class DonationSplitsProjectTable extends Component implements HasForms, HasTable
                     }
                 })
                 ->mountUsing(function (ComponentContainer $form, Model $record) {
+                    $remaining = $record->amount - $record->childrenSplits->sum('amount');
                     $form->fill([
-                        'amount' => $record->amount,
+                        'amount' => round($remaining, 2), // ou number_format($remaining, 2, '.', '')
                     ]);
                 })
                 ->slideOver()
