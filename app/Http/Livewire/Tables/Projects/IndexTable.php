@@ -2,12 +2,11 @@
 
 namespace App\Http\Livewire\Tables\Projects;
 
-use App\Enums\Models\Projects\ProjectStateEnum;
 use App\Enums\Roles;
-use App\Models\Certification;
 use App\Models\Organization;
 use App\Models\Project;
 use App\Models\User;
+use App\Models\UserTablePreference;
 use Closure;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
@@ -15,11 +14,10 @@ use Filament\Tables\Actions\BulkAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
-use Filament\Tables\Filters\Filter;
-use Filament\Tables\Filters\SelectFilter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 use Livewire\Component;
 
 class IndexTable extends Component implements HasForms, HasTable
@@ -29,6 +27,31 @@ class IndexTable extends Component implements HasForms, HasTable
     public ?Organization $organization = null;
 
     public ?Project $project = null;
+
+    protected string $tablePreferenceKey = 'projects.index.table';
+
+    protected array $activeSavedFilters = [];
+
+    public array $toggledTableColumns = [];
+
+    public function mount(): void
+    {
+        $this->loadUserColumnToggles();
+
+        if (request()->boolean('resetFilters')) {
+            $this->clearSavedFiltersForUser();
+            $this->redirect(request()->url(), navigate: true);
+            return;
+        }
+
+        $currentFilters = $this->getCurrentFiltersFromRequest();
+        if (! empty($currentFilters)) {
+            $this->activeSavedFilters = $currentFilters;
+            $this->saveFiltersArrayForUser($currentFilters);
+        } else {
+            $this->activeSavedFilters = $this->getSavedFiltersForUser();
+        }
+    }
 
     protected function getTableQuery(): Builder
     {
@@ -43,6 +66,8 @@ class IndexTable extends Component implements HasForms, HasTable
             'referent',
             'createdBy',
             'certification',
+            'segmentation',
+            'methodForm',
             'donationSplits.childrenSplits',
         ])
             ->withCount([
@@ -72,68 +97,11 @@ class IndexTable extends Component implements HasForms, HasTable
                 return $query->whereHas('projectPartners', function ($q) use ($user) {
                     return $q->whereIn('partner_id', $user->partners()->pluck('id')->toArray());
                 });
-            });
-    }
-
-    protected function getTableFilters(): array
-    {
-        return [
-            SelectFilter::make('tenant_filter')
-                ->searchable()
-                ->visible(request()->user()->hasRole(Roles::Admin))
-                ->label('Antenne locale')
-                ->preload()
-                ->relationship('tenant', 'name'),
-
-            SelectFilter::make('certification_filter_3')
-                ->label('Certification')
-                ->attribute('certification_id')
-                ->multiple()
-                ->options(Certification::pluck('name', 'id')),
-
-            SelectFilter::make('segmentation_filter')
-                ->multiple()
-                ->label('Segmentation')
-                ->preload()
-                ->relationship('segmentation', 'name'),
-            SelectFilter::make('method_filter')
-                ->multiple()
-                ->label('Méthode')
-                ->preload()
-                ->visible(request()->user()->hasRole(Roles::Admin, Roles::LocalAdmin))
-                ->relationship('methodForm', 'name'),
-            SelectFilter::make('state_filter')
-                ->attribute('state')
-                ->multiple()
-                ->label('Statut')
-                ->options(ProjectStateEnum::toArray()),
-            Filter::make('can_be_displayed_on_website')
-                ->toggle()
-                ->query(fn (Builder $query): Builder => $query->where('can_be_displayed_on_website', true))
-                ->label('Visible en ligne'),
-            Filter::make('can_be_financed_online')
-                ->toggle()
-                ->query(fn (Builder $query): Builder => $query->where('can_be_financed_online', true))
-                ->label('Finançable en ligne'),
-
-            Filter::make('available_money')
-                ->toggle()
-                ->query(function (Builder $query): Builder {
-                    // Nouvelle logique : Filtrer les projets où le montant recherché
-                    // moins les contributions reçues est supérieur à 0.
-                    return $query->whereExists(function ($query) {
-                        $query->select(\DB::raw(1))
-                            ->from('projects as p') 
-                            ->leftJoin('donation_splits as ds', 'p.id', '=', 'ds.project_id') 
-                            ->whereColumn('p.id', 'projects.id') 
-                            ->whereNotNull('p.amount_wanted_ttc') 
-                            ->where('p.amount_wanted_ttc', '>', 0) 
-                            ->groupBy('p.id', 'p.amount_wanted_ttc') 
-                            ->havingRaw('p.amount_wanted_ttc - COALESCE(SUM(ds.amount), 0) > 0');
-                    });
-                })
-                ->label('Reste à financer > 0'),
-        ];
+            })
+            ->when($this->getFilterParam('cf_id'), fn ($query, $value) => $this->applyMultiFilter($query, 'certification_id', $value))
+            ->when($this->getFilterParam('mf_id'), fn ($query, $value) => $this->applyMultiFilter($query, 'method_form_id', $value))
+            ->when($this->getFilterParam('sg_id'), fn ($query, $value) => $this->applyMultiFilter($query, 'segmentation_id', $value))
+            ->when($this->getFilterParam('st'), fn ($query, $value) => $this->applyMultiFilter($query, 'state', $value));
     }
 
     protected function getTableRecordUrlUsing(): Closure
@@ -141,12 +109,164 @@ class IndexTable extends Component implements HasForms, HasTable
         return fn (Model $record): string => route('projects.show.details', ['project' => $record->slug]);
     }
 
+    public function updatedToggledTableColumns(): void
+    {
+        session()->put([
+            $this->getTableColumnToggleFormStateSessionKey() => $this->toggledTableColumns,
+        ]);
+
+        if (! $this->canPersistPreferences()) {
+            return;
+        }
+
+        if ($user = request()->user()) {
+            UserTablePreference::updateOrCreate(
+                [
+                    'user_id' => $user->id,
+                    'table_key' => $this->tablePreferenceKey,
+                ],
+                [
+                    'toggled_columns' => $this->toggledTableColumns,
+                ],
+            );
+        }
+    }
+
+    protected function loadUserColumnToggles(): void
+    {
+        if (! $this->canPersistPreferences()) {
+            return;
+        }
+
+        $user = request()->user();
+        if (! $user) {
+            return;
+        }
+
+        $pref = UserTablePreference::where('user_id', $user->id)
+            ->where('table_key', $this->tablePreferenceKey)
+            ->first();
+
+        if ($pref && is_array($pref->toggled_columns)) {
+            $this->toggledTableColumns = $pref->toggled_columns;
+
+            session()->put([
+                $this->getTableColumnToggleFormStateSessionKey() => $this->toggledTableColumns,
+            ]);
+        }
+    }
+
+    protected function getCurrentFiltersFromRequest(): array
+    {
+        return collect(request()->only(['cf_id', 'mf_id', 'sg_id', 'st']))
+            ->filter(fn ($value) => filled($value))
+            ->toArray();
+    }
+
+    protected function saveFiltersArrayForUser(array $filters): void
+    {
+        if (! $this->canPersistPreferences()) {
+            return;
+        }
+
+        $user = request()->user();
+        if (! $user) {
+            return;
+        }
+
+        UserTablePreference::updateOrCreate(
+            [
+                'user_id' => $user->id,
+                'table_key' => $this->tablePreferenceKey,
+            ],
+            [
+                'saved_filters' => $filters,
+            ]
+        );
+    }
+
+    protected function clearSavedFiltersForUser(): void
+    {
+        if (! $this->canPersistPreferences()) {
+            return;
+        }
+
+        $user = request()->user();
+        if (! $user) {
+            return;
+        }
+
+        UserTablePreference::updateOrCreate(
+            [
+                'user_id' => $user->id,
+                'table_key' => $this->tablePreferenceKey,
+            ],
+            [
+                'saved_filters' => null,
+            ]
+        );
+    }
+
+    protected function getSavedFiltersForUser(): array
+    {
+        if (! $this->canPersistPreferences()) {
+            return [];
+        }
+
+        $user = request()->user();
+        if (! $user) {
+            return [];
+        }
+
+        return UserTablePreference::where('user_id', $user->id)
+            ->where('table_key', $this->tablePreferenceKey)
+            ->value('saved_filters') ?? [];
+    }
+
+    protected function getFilterParam(string $key)
+    {
+        $value = request()->input($key);
+
+        return filled($value) ? $value : ($this->activeSavedFilters[$key] ?? null);
+    }
+
+    protected function normalizeFilterValues($raw): array
+    {
+        if (is_array($raw)) {
+            return array_values(array_filter(array_map('strval', $raw)));
+        }
+
+        $raw = trim((string) $raw);
+        if ($raw === '') {
+            return [];
+        }
+
+        return array_values(array_filter(explode(',', $raw)));
+    }
+
+    protected function applyMultiFilter(Builder $query, string $column, $raw): Builder
+    {
+        $values = $this->normalizeFilterValues($raw);
+        if (count($values) === 0) {
+            return $query;
+        }
+
+        return count($values) === 1
+            ? $query->where($column, $values[0])
+            : $query->whereIn($column, $values);
+    }
+
+    protected function canPersistPreferences(): bool
+    {
+        return Schema::hasTable('user_table_preferences');
+    }
+
     protected function getTableColumns(): array
     {
         return [
             TextColumn::make('name')
                 ->label('Nom')
-                ->limit(50)
+                ->limit(200)
                 ->tooltip(fn (Model $record): string => $record->name)
                 ->grow(false)
                 ->description(function (Model $record): string {
@@ -156,15 +276,23 @@ class IndexTable extends Component implements HasForms, HasTable
                     return $query
                         ->orderBy('name', $direction);
                 })
-                ->searchable(),
+                ->searchable()
+                ->toggleable(),
 
             TextColumn::make('certification.name')
-                ->visible(is_null($this->project))
+                ->label('Certification')
                 ->default('-')
-                ->description(function (Model $record): string {
-                    return $record->state->humanName();
-                })
-                ->label('Certification'),
+                ->toggleable(),
+            TextColumn::make('segmentation.name')
+                ->label('Segmentation')
+                ->toggleable(isToggledHiddenByDefault: true),
+            TextColumn::make('methodForm.name')
+                ->label('Méthode')
+                ->toggleable(isToggledHiddenByDefault: true),
+            TextColumn::make('state')
+                ->label('Statut')
+                ->formatStateUsing(fn (Project $record) => $record->state?->humanName() ?? '-')
+                ->toggleable(isToggledHiddenByDefault: true),
             TextColumn::make('sponsor.name')
                 ->label('Porteur')
                 ->description(function (Model $record): string {
@@ -173,22 +301,21 @@ class IndexTable extends Component implements HasForms, HasTable
                         Organization::class => 'Organisation',
                         default => 'Type de porteur inconnu'
                     };
-                }),
+                })
+                ->toggleable(),
             TextColumn::make('auditor.name')
                 ->default('-')
-                ->label('Auditeur'),
+                ->label('Auditeur')
+                ->toggleable(),
             TextColumn::make('referent.name')
                 ->default('-')
-                ->label('Référent'),
+                ->label('Référent')
+                ->toggleable(),
 
             TextColumn::make('id')
                 ->formatStateUsing(function (Project $record) {
-                    /*if ($record->children_projects_count == 0) {
+                    if (! isset($record->cost_global_ttc) || ! is_numeric($record->cost_global_ttc)) {
                         return '-';
-                    }*/
-
-                    if (!isset($record->cost_global_ttc) || !is_numeric($record->cost_global_ttc)) {
-                        return '-'; 
                     }
 
                     $amountWanted = (float) $record->cost_global_ttc;
@@ -197,7 +324,8 @@ class IndexTable extends Component implements HasForms, HasTable
 
                     return format(max(0, $remainingToFund), 2).' €';
                 })
-                ->label('Reste à financer (TTC)'),
+                ->label('Reste à financer (TTC)')
+                ->toggleable(),
 
             TextColumn::make('created_at')
                 ->label('Démarrage et dépôt')
@@ -205,9 +333,10 @@ class IndexTable extends Component implements HasForms, HasTable
                     return "Démarrage : " . $record->created_at->format('d/m/Y');
                 })
                 ->description(function (Model $record): ?string {
-                    return 'Déposé le '.$record->created_at->format('d/m/Y');
+                    return 'Dépôt le '.$record->created_at->format('d/m/Y');
                 })
-                ->sortable(['created_at']),
+                ->sortable(['created_at'])
+                ->toggleable(),
         ];
     }
 
@@ -230,6 +359,11 @@ class IndexTable extends Component implements HasForms, HasTable
                     defaultSuccessNotification("Tous les projets sélectionnés sont maintenant synchronisés.");
                 })
         ];
+    }
+
+    protected function getTableHeaderActions(): array
+    {
+        return [];
     }
 
     protected function isTablePaginationEnabled(): bool
