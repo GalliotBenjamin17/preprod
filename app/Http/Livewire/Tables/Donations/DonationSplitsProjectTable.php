@@ -182,6 +182,7 @@ class DonationSplitsProjectTable extends Component implements HasForms, HasTable
                 ->color('danger')
                 ->icon('heroicon-o-trash')
                 ->requiresConfirmation()
+                ->visible(fn () => request()->user()?->email === 'benjamin@cooperativecarbone.fr')
                 ->modalDescription("Supprime ce fléchage et ses éventuels sous-fléchages. Le montant redevient disponible sur la contribution.")
                 ->action(function (DonationSplit $record) {
                     DonationHelper::deleteSplit($record);
