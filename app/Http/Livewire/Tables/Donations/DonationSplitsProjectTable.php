@@ -177,6 +177,21 @@ class DonationSplitsProjectTable extends Component implements HasForms, HasTable
                 ])
                 ->modalHeading('Fléchage de la contribution')
                 ->modalSubmitActionLabel('Flécher'),
+            Action::make('delete_split')
+                ->label('Supprimer')
+                ->color('danger')
+                ->icon('heroicon-o-trash')
+                ->requiresConfirmation()
+                ->modalDescription("Supprime ce fléchage et ses éventuels sous-fléchages. Le montant redevient disponible sur la contribution.")
+                ->action(function (DonationSplit $record) {
+                    DonationHelper::deleteSplit($record);
+
+                    Notification::make()
+                        ->title('Fléchage supprimé')
+                        ->body('Le montant est à nouveau disponible.')
+                        ->success()
+                        ->send();
+                }),
         ];
     }
 

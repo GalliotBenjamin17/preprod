@@ -9,6 +9,7 @@ use App\Models\DonationSplit;
 use App\Models\Project;
 use App\Models\User;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Support\Facades\DB;
 
 class DonationHelper
 {
@@ -192,5 +193,35 @@ class DonationHelper
         }
 
         return $checkedAmount;
+    }
+
+    /**
+     * Supprime un fléchage et ses éventuels sous-fléchages, puis met à jour l'état du don.
+     */
+    public static function deleteSplit(DonationSplit $donationSplit): void
+    {
+        DB::transaction(function () use ($donationSplit) {
+            $donation = $donationSplit->donation()->first();
+
+            self::deleteSplitRecursively($donationSplit);
+
+            if ($donation) {
+                $donation->refresh();
+                $donation->update([
+                    'is_donation_splits_full' => $donation->isSplitsFull(),
+                ]);
+            }
+        });
+    }
+
+    protected static function deleteSplitRecursively(DonationSplit $donationSplit): void
+    {
+        $donationSplit->load('childrenSplits');
+
+        foreach ($donationSplit->childrenSplits as $childSplit) {
+            self::deleteSplitRecursively($childSplit);
+        }
+
+        $donationSplit->delete();
     }
 }

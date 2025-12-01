@@ -3,11 +3,14 @@
 namespace App\Http\Livewire\Tables\Donations;
 
 use App\Helpers\TVAHelper;
+use App\Helpers\DonationHelper;
 use App\Models\Donation;
 use App\Models\DonationSplit;
 use App\Models\Project;
+use Filament\Notifications\Notification;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
+use Filament\Tables\Actions\Action;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
@@ -99,6 +102,27 @@ class DonationSplitsTable extends Component implements HasForms, HasTable
                         ->orWhereRelation('splitBy', 'last_name', 'LIKE', "%{$search}%");
                 })
                 ->sortable(),
+        ];
+    }
+
+    protected function getTableActions(): array
+    {
+        return [
+            Action::make('delete_split')
+                ->label('Supprimer')
+                ->color('danger')
+                ->icon('heroicon-o-trash')
+                ->requiresConfirmation()
+                ->modalDescription("Supprime ce fléchage et ses éventuels sous-fléchages. Le montant redevient disponible sur la contribution.")
+                ->action(function (DonationSplit $record) {
+                    DonationHelper::deleteSplit($record);
+
+                    Notification::make()
+                        ->title('Fléchage supprimé')
+                        ->body('Le montant est à nouveau disponible.')
+                        ->success()
+                        ->send();
+                }),
         ];
     }
 
