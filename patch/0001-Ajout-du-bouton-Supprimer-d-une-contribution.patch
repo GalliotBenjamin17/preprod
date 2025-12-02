@@ -1,0 +1,134 @@
+From b57f3548270cc8bee3d69cc76252c95c1773fb25 Mon Sep 17 00:00:00 2001
+From: GalliotBenjamin17 <benjamin.galliot@cooperativecarbone.fr>
+Date: Mon, 1 Dec 2025 14:09:55 +0100
+Subject: [PATCH] Ajout du bouton "Supprimer" d'une contribution
+
+---
+ app/Helpers/DonationHelper.php                | 31 +++++++++++++++++++
+ .../Donations/DonationSplitsProjectTable.php  | 15 +++++++++
+ .../Tables/Donations/DonationSplitsTable.php  | 24 ++++++++++++++
+ 3 files changed, 70 insertions(+)
+
+diff --git a/app/Helpers/DonationHelper.php b/app/Helpers/DonationHelper.php
+index f3cd5f1..0c76db1 100644
+--- a/app/Helpers/DonationHelper.php
++++ b/app/Helpers/DonationHelper.php
+@@ -9,6 +9,7 @@
+ use App\Models\Project;
+ use App\Models\User;
+ use Barryvdh\DomPDF\Facade\Pdf;
++use Illuminate\Support\Facades\DB;
+ 
+ class DonationHelper
+ {
+@@ -193,4 +194,34 @@ public static function getAmount(Project $project, float $amount): float
+ 
+         return $checkedAmount;
+     }
++
++    /**
++     * Supprime un fléchage et ses éventuels sous-fléchages, puis met à jour l'état du don.
++     */
++    public static function deleteSplit(DonationSplit $donationSplit): void
++    {
++        DB::transaction(function () use ($donationSplit) {
++            $donation = $donationSplit->donation()->first();
++
++            self::deleteSplitRecursively($donationSplit);
++
++            if ($donation) {
++                $donation->refresh();
++                $donation->update([
++                    'is_donation_splits_full' => $donation->isSplitsFull(),
++                ]);
++            }
++        });
++    }
++
++    protected static function deleteSplitRecursively(DonationSplit $donationSplit): void
++    {
++        $donationSplit->load('childrenSplits');
++
++        foreach ($donationSplit->childrenSplits as $childSplit) {
++            self::deleteSplitRecursively($childSplit);
++        }
++
++        $donationSplit->delete();
++    }
+ }
+diff --git a/app/Http/Livewire/Tables/Donations/DonationSplitsProjectTable.php b/app/Http/Livewire/Tables/Donations/DonationSplitsProjectTable.php
+index f6e5223..87bf781 100644
+--- a/app/Http/Livewire/Tables/Donations/DonationSplitsProjectTable.php
++++ b/app/Http/Livewire/Tables/Donations/DonationSplitsProjectTable.php
+@@ -177,6 +177,21 @@ function (DonationSplit $record) {
+                 ])
+                 ->modalHeading('Fléchage de la contribution')
+                 ->modalSubmitActionLabel('Flécher'),
++            Action::make('delete_split')
++                ->label('Supprimer')
++                ->color('danger')
++                ->icon('heroicon-o-trash')
++                ->requiresConfirmation()
++                ->modalDescription("Supprime ce fléchage et ses éventuels sous-fléchages. Le montant redevient disponible sur la contribution.")
++                ->action(function (DonationSplit $record) {
++                    DonationHelper::deleteSplit($record);
++
++                    Notification::make()
++                        ->title('Fléchage supprimé')
++                        ->body('Le montant est à nouveau disponible.')
++                        ->success()
++                        ->send();
++                }),
+         ];
+     }
+ 
+diff --git a/app/Http/Livewire/Tables/Donations/DonationSplitsTable.php b/app/Http/Livewire/Tables/Donations/DonationSplitsTable.php
+index 545714b..70ea5ed 100644
+--- a/app/Http/Livewire/Tables/Donations/DonationSplitsTable.php
++++ b/app/Http/Livewire/Tables/Donations/DonationSplitsTable.php
+@@ -3,11 +3,14 @@
+ namespace App\Http\Livewire\Tables\Donations;
+ 
+ use App\Helpers\TVAHelper;
++use App\Helpers\DonationHelper;
+ use App\Models\Donation;
+ use App\Models\DonationSplit;
+ use App\Models\Project;
++use Filament\Notifications\Notification;
+ use Filament\Forms\Concerns\InteractsWithForms;
+ use Filament\Forms\Contracts\HasForms;
++use Filament\Tables\Actions\Action;
+ use Filament\Tables\Columns\TextColumn;
+ use Filament\Tables\Concerns\InteractsWithTable;
+ use Filament\Tables\Contracts\HasTable;
+@@ -102,6 +105,27 @@ protected function getTableColumns(): array
+         ];
+     }
+ 
++    protected function getTableActions(): array
++    {
++        return [
++            Action::make('delete_split')
++                ->label('Supprimer')
++                ->color('danger')
++                ->icon('heroicon-o-trash')
++                ->requiresConfirmation()
++                ->modalDescription("Supprime ce fléchage et ses éventuels sous-fléchages. Le montant redevient disponible sur la contribution.")
++                ->action(function (DonationSplit $record) {
++                    DonationHelper::deleteSplit($record);
++
++                    Notification::make()
++                        ->title('Fléchage supprimé')
++                        ->body('Le montant est à nouveau disponible.')
++                        ->success()
++                        ->send();
++                }),
++        ];
++    }
++
+     public function render()
+     {
+         return view('livewire.tables.donations.donation-splits-table');
+-- 
+2.50.1.windows.1
+

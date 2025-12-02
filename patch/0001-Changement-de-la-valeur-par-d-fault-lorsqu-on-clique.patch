@@ -1,0 +1,31 @@
+From e0d268053ae83bd97e086f57fa079ff8d17c2bc8 Mon Sep 17 00:00:00 2001
+From: Benjamin Galliot <benjamin.galliot@cooperativecarbone.fr>
+Date: Tue, 25 Nov 2025 15:42:56 +0100
+Subject: [PATCH] =?UTF-8?q?Changement=20de=20la=20valeur=20par=20d=C3=A9fa?=
+ =?UTF-8?q?ult=20lorsqu'on=20clique=20sur=20le=20bouton=20fl=C3=A9cher?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ .../Livewire/Tables/Donations/DonationSplitsProjectTable.php   | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/app/Http/Livewire/Tables/Donations/DonationSplitsProjectTable.php b/app/Http/Livewire/Tables/Donations/DonationSplitsProjectTable.php
+index 6c8e064..f6e5223 100644
+--- a/app/Http/Livewire/Tables/Donations/DonationSplitsProjectTable.php
++++ b/app/Http/Livewire/Tables/Donations/DonationSplitsProjectTable.php
+@@ -94,8 +94,9 @@ protected function getTableActions(): array
+                     }
+                 })
+                 ->mountUsing(function (ComponentContainer $form, Model $record) {
++                    $remaining = $record->amount - $record->childrenSplits->sum('amount');
+                     $form->fill([
+-                        'amount' => $record->amount,
++                        'amount' => round($remaining, 2), // ou number_format($remaining, 2, '.', '')
+                     ]);
+                 })
+                 ->slideOver()
+-- 
+2.50.1.windows.1
+
